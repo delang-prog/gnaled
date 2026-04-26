@@ -65,10 +65,23 @@ private fun SwingRow(swing: Swing, onClick: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = swing.label, style = MaterialTheme.typography.titleMedium)
             Text(
-                text = formatter.format(Date(swing.recordedAtMillis)),
+                text = "${formatter.format(Date(swing.recordedAtMillis))} · ${formatDuration(swing.durationMillis)}",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 4.dp),
             )
+        }
+    }
+}
+
+private fun formatDuration(durationMillis: Long): String {
+    val totalSeconds = (durationMillis / 1000.0)
+    return when {
+        totalSeconds < 1 -> "${durationMillis}ms"
+        totalSeconds < 60 -> "%.1fs".format(totalSeconds)
+        else -> {
+            val mins = (totalSeconds / 60).toInt()
+            val secs = (totalSeconds % 60).toInt()
+            "%d:%02d".format(mins, secs)
         }
     }
 }
