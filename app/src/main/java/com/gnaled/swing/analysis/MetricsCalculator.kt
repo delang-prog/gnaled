@@ -26,11 +26,17 @@ object MetricsCalculator {
         val out = mutableListOf<Metric>()
         val contact = samples[segmentation.contactFrameIndex]
         val backStart = samples[segmentation.backswingStartFrameIndex]
+        // Restrict shoulder/hip rotation analysis to the swing window so
+        // walking-to/from-the-tripod motion doesn't pollute the range.
+        val swingWindow = samples.subList(
+            segmentation.backswingStartFrameIndex,
+            (segmentation.followThroughEndFrameIndex + 1).coerceAtMost(samples.size),
+        )
 
-        rangeDegrees(samples, PoseConnections.LEFT_SHOULDER, PoseConnections.RIGHT_SHOULDER)?.let {
+        rangeDegrees(swingWindow, PoseConnections.LEFT_SHOULDER, PoseConnections.RIGHT_SHOULDER)?.let {
             out += Metric(swingId, MetricKind.ShoulderTurnDeg, it.toDouble(), "deg")
         }
-        rangeDegrees(samples, PoseConnections.LEFT_HIP, PoseConnections.RIGHT_HIP)?.let {
+        rangeDegrees(swingWindow, PoseConnections.LEFT_HIP, PoseConnections.RIGHT_HIP)?.let {
             out += Metric(swingId, MetricKind.HipRotationDeg, it.toDouble(), "deg")
         }
 
