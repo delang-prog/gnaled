@@ -5,6 +5,8 @@ import com.gnaled.swing.data.entity.AnalysisStatus
 import com.gnaled.swing.data.entity.CaptureSource
 import com.gnaled.swing.data.entity.MetricKind
 import com.gnaled.swing.data.entity.SwingType
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class Converters {
     @TypeConverter fun fromSwingType(value: SwingType): String = value.name
@@ -18,4 +20,19 @@ class Converters {
 
     @TypeConverter fun fromMetricKind(value: MetricKind): String = value.name
     @TypeConverter fun toMetricKind(value: String): MetricKind = MetricKind.valueOf(value)
+
+    @TypeConverter
+    fun fromFloatArray(value: FloatArray): ByteArray {
+        val buffer = ByteBuffer.allocate(value.size * Float.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+        value.forEach { buffer.putFloat(it) }
+        return buffer.array()
+    }
+
+    @TypeConverter
+    fun toFloatArray(value: ByteArray): FloatArray {
+        val buffer = ByteBuffer.wrap(value).order(ByteOrder.LITTLE_ENDIAN)
+        val floats = FloatArray(value.size / Float.SIZE_BYTES)
+        for (i in floats.indices) floats[i] = buffer.float
+        return floats
+    }
 }
