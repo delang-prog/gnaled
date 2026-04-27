@@ -53,7 +53,24 @@ object MetricsCalculator {
     private fun rangeDegrees(samples: List<Sample>, leftIdx: Int, rightIdx: Int): Float? {
         val angles = samples.mapNotNull { angleDegrees(it, leftIdx, rightIdx) }
         if (angles.isEmpty()) return null
-        return angles.max() - angles.min()
+        val unwrapped = unwrap(angles)
+        return unwrapped.max() - unwrapped.min()
+    }
+
+    /** atan2 wraps at ±180°; physically a smooth rotation crossing the seam
+     *  shouldn't read as a 360° jump. Walk the sequence and add ±360° when
+     *  consecutive samples differ by more than 180°. */
+    private fun unwrap(angles: List<Float>): FloatArray {
+        val out = FloatArray(angles.size)
+        if (angles.isEmpty()) return out
+        out[0] = angles[0]
+        for (i in 1 until angles.size) {
+            var diff = angles[i] - out[i - 1]
+            while (diff > 180f) diff -= 360f
+            while (diff < -180f) diff += 360f
+            out[i] = out[i - 1] + diff
+        }
+        return out
     }
 
     private fun angleDegrees(s: Sample, leftIdx: Int, rightIdx: Int): Float? {
