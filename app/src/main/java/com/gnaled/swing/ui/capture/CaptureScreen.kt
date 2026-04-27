@@ -2,6 +2,7 @@ package com.gnaled.swing.ui.capture
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.video.VideoRecordEvent
@@ -11,7 +12,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -19,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.FiberManualRecord
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -57,9 +61,12 @@ fun CaptureScreen() {
         factory = CaptureViewModel.Factory(
             repository = container.swingRepository,
             analysisScheduler = container.poseAnalysisScheduler,
+            autoClipFinalizer = container.autoClipFinalizer,
         ),
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val mode by viewModel.mode.collectAsStateWithLifecycle()
+    val autoState by viewModel.autoState.collectAsStateWithLifecycle()
 
     val cameraGranted = rememberPermissionState(Manifest.permission.CAMERA)
     val audioGranted = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
@@ -98,6 +105,16 @@ fun CaptureScreen() {
         }
     }
 
+    LaunchedEffect(autoState) {
+        if (autoState is AutoState.Active) {
+            liveAnalyzer.frame.collect { frame ->
+                if (frame != null) {
+                    viewModel.onAutoFrame(frame, SystemClock.uptimeMillis())
+                }
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -111,46 +128,76 @@ fun CaptureScreen() {
             modifier = Modifier.fillMaxSize(),
         )
 
-        StatusOverlay(state = state, modifier = Modifier.align(Alignment.TopCenter).padding(16.dp))
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ModeSwitcher(
+                mode = mode,
+                enabled = autoState !is AutoState.Active && autoState !is AutoState.Processing,
+                onSelect = viewModel::setMode,
+            )
+            Box(modifier = Modifier.padding(top = 8.dp)) {
+                StatusOverlay(state = state, autoState = autoState, mode = mode)
+            }
+        }
 
-        RecordButton(
-            isRecording = state is CaptureUiState.Recording,
-            enabled = state !is CaptureUiState.Saving,
-            onClick = {
-                if (state is CaptureUiState.Recording) {
-                    controller.stopRecording()
-                } else {
+        when (mode) {
+            CaptureMode.Manual -> ManualControls(
+                state = state,
+                onClick = {
+                    if (state is CaptureUiState.Recording) {
+                        controller.stopRecording()
+                    } else {
+                        startManualRecording(
+                            controller = controller,
+                            context = context,
+                            withAudio = audioGranted.granted,
+                            viewModel = viewModel,
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp),
+            )
+            CaptureMode.Auto -> AutoControls(
+                autoState = autoState,
+                onStart = {
                     val clip = ClipStorage.newClipFile(context)
-                    val startMillis = System.currentTimeMillis()
+                    val monoStart = SystemClock.uptimeMillis()
                     controller.startRecording(
                         file = clip.file,
                         withAudio = audioGranted.granted,
                     ) { event ->
                         when (event) {
-                            is VideoRecordEvent.Start -> viewModel.onRecordingStarted(startMillis)
+                            is VideoRecordEvent.Start -> viewModel.onAutoSessionStarted(clip.file, monoStart)
                             is VideoRecordEvent.Finalize -> {
                                 if (event.hasError()) {
-                                    viewModel.onRecordingFailed(
+                                    viewModel.onAutoSessionFailed(
                                         "Recording failed (${event.error}): ${event.cause?.message ?: "unknown"}",
                                     )
-                                    clip.file.delete()
                                 } else {
-                                    finalizeClip(
-                                        clip = clip,
-                                        startMillis = startMillis,
-                                        viewModel = viewModel,
-                                    )
+                                    val durationMillis = runCatching {
+                                        VideoMetadataReader.read(clip.file).durationMillis
+                                    }.getOrElse { SystemClock.uptimeMillis() - monoStart }
+                                    viewModel.onAutoSessionFinalized(durationMillis = durationMillis)
                                 }
                             }
                             else -> Unit
                         }
                     }
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp),
-        )
+                },
+                onStop = { controller.stopRecording() },
+                onAcknowledge = viewModel::acknowledgeAuto,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 32.dp)
+                    .fillMaxWidth(),
+            )
+        }
     }
 
     LaunchedEffect(state) {
@@ -161,13 +208,37 @@ fun CaptureScreen() {
     }
 }
 
+private fun startManualRecording(
+    controller: CameraController,
+    context: android.content.Context,
+    withAudio: Boolean,
+    viewModel: CaptureViewModel,
+) {
+    val clip = ClipStorage.newClipFile(context)
+    val startMillis = System.currentTimeMillis()
+    controller.startRecording(file = clip.file, withAudio = withAudio) { event ->
+        when (event) {
+            is VideoRecordEvent.Start -> viewModel.onRecordingStarted(startMillis)
+            is VideoRecordEvent.Finalize -> {
+                if (event.hasError()) {
+                    viewModel.onRecordingFailed(
+                        "Recording failed (${event.error}): ${event.cause?.message ?: "unknown"}",
+                    )
+                    clip.file.delete()
+                } else {
+                    finalizeClip(clip = clip, startMillis = startMillis, viewModel = viewModel)
+                }
+            }
+            else -> Unit
+        }
+    }
+}
+
 private fun finalizeClip(
     clip: ClipHandle,
     startMillis: Long,
     viewModel: CaptureViewModel,
 ) {
-    // Metadata read is fast for short clips; runs on the main-executor callback,
-    // but the DB insert in the ViewModel is dispatched off the main thread.
     val metadata = VideoMetadataReader.read(clip.file)
     viewModel.onRecordingFinalized(
         clipId = clip.id,
@@ -178,17 +249,57 @@ private fun finalizeClip(
 }
 
 @Composable
-private fun StatusOverlay(state: CaptureUiState, modifier: Modifier = Modifier) {
-    val text = when (state) {
-        CaptureUiState.Idle -> null
-        is CaptureUiState.Recording -> "● Recording"
-        CaptureUiState.Saving -> "Saving…"
-        is CaptureUiState.Saved -> "Saved"
-        is CaptureUiState.Error -> state.message
+private fun ModeSwitcher(
+    mode: CaptureMode,
+    enabled: Boolean,
+    onSelect: (CaptureMode) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        FilterChip(
+            selected = mode == CaptureMode.Manual,
+            enabled = enabled,
+            onClick = { onSelect(CaptureMode.Manual) },
+            label = { Text("Manual") },
+        )
+        FilterChip(
+            selected = mode == CaptureMode.Auto,
+            enabled = enabled,
+            onClick = { onSelect(CaptureMode.Auto) },
+            label = { Text("Auto") },
+        )
+    }
+}
+
+@Composable
+private fun StatusOverlay(
+    state: CaptureUiState,
+    autoState: AutoState,
+    mode: CaptureMode,
+) {
+    val text = when (mode) {
+        CaptureMode.Manual -> when (state) {
+            CaptureUiState.Idle -> null
+            is CaptureUiState.Recording -> "● Recording"
+            CaptureUiState.Saving -> "Saving…"
+            is CaptureUiState.Saved -> "Saved"
+            is CaptureUiState.Error -> state.message
+        }
+        CaptureMode.Auto -> when (autoState) {
+            AutoState.Off -> null
+            is AutoState.Active -> "● Auto · ${autoState.swingsDetected} swings"
+            is AutoState.Processing -> "Processing ${autoState.processed}/${autoState.total}…"
+            is AutoState.Done -> "Saved ${autoState.saved} swings"
+            is AutoState.Error -> autoState.message
+        }
     } ?: return
 
     Box(
-        modifier = modifier
+        modifier = Modifier
             .background(Color.Black.copy(alpha = 0.5f), shape = CircleShape)
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
@@ -201,14 +312,14 @@ private fun StatusOverlay(state: CaptureUiState, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun RecordButton(
-    isRecording: Boolean,
-    enabled: Boolean,
+private fun ManualControls(
+    state: CaptureUiState,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isRecording = state is CaptureUiState.Recording
     FloatingActionButton(
-        onClick = { if (enabled) onClick() },
+        onClick = { if (state !is CaptureUiState.Saving) onClick() },
         modifier = modifier.size(72.dp),
         containerColor = if (isRecording) Color(0xFFB91C1C) else Color(0xFFEF4444),
     ) {
@@ -217,6 +328,50 @@ private fun RecordButton(
             contentDescription = if (isRecording) "Stop" else "Record",
             tint = Color.White,
         )
+    }
+}
+
+@Composable
+private fun AutoControls(
+    autoState: AutoState,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+    onAcknowledge: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        when (autoState) {
+            AutoState.Off, is AutoState.Done, is AutoState.Error -> {
+                Button(
+                    onClick = {
+                        if (autoState is AutoState.Done || autoState is AutoState.Error) onAcknowledge()
+                        onStart()
+                    },
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                ) {
+                    Text("Start auto session")
+                }
+            }
+            is AutoState.Active -> {
+                Button(
+                    onClick = onStop,
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+                ) {
+                    Text("Stop session · ${autoState.swingsDetected} so far")
+                }
+            }
+            is AutoState.Processing -> {
+                Text(
+                    text = "Cutting clips ${autoState.processed}/${autoState.total}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
     }
 }
 
