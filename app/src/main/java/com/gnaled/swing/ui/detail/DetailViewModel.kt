@@ -17,12 +17,20 @@ import com.gnaled.swing.health.HealthConnectRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
 
 private const val HR_WINDOW_PRE_SECONDS = 30L
 private const val HR_WINDOW_POST_SECONDS = 30L
 
+/**
+ * Loads a swing from the repository as Flows so analysis updates land on
+ * the screen without a manual refresh: when the worker finishes and writes
+ * samples + metrics, the combined flow re-emits and the UI shows the
+ * metrics card immediately.
+ */
 @OptIn(UnstableApi::class)
 class DetailViewModel(
     appContext: Context,
@@ -38,25 +46,41 @@ class DetailViewModel(
         playWhenReady = false
     }
 
+    private var playerPrepared = false
+    private var hrLoadedFor: Long? = null
+
     init {
         viewModelScope.launch {
-            val swing = repository.get(swingId)
-            if (swing == null) {
-                _state.value = DetailUiState.Missing
-                return@launch
+            combine(
+                repository.observeSwing(swingId),
+                repository.observeSamples(swingId),
+                repository.observeMetrics(swingId),
+            ) { swing, samples, metrics ->
+                Triple(swing, samples, metrics)
+            }.collect { (swing, samples, metrics) ->
+                if (swing == null) {
+                    _state.value = DetailUiState.Missing
+                    return@collect
+                }
+                if (!playerPrepared) {
+                    player.setMediaItem(
+                        MediaItem.fromUri(android.net.Uri.fromFile(java.io.File(swing.videoPath))),
+                    )
+                    player.prepare()
+                    playerPrepared = true
+                }
+                val previous = state.value as? DetailUiState.Ready
+                _state.value = DetailUiState.Ready(
+                    swing = swing,
+                    samples = samples,
+                    metrics = metrics,
+                    averageHeartRateBpm = previous?.averageHeartRateBpm,
+                )
+                if (hrLoadedFor != swing.recordedAtMillis) {
+                    hrLoadedFor = swing.recordedAtMillis
+                    loadHeartRate(swing)
+                }
             }
-            val samples = repository.samples(swingId)
-            val metrics = repository.metrics(swingId)
-            player.setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(java.io.File(swing.videoPath))))
-            player.prepare()
-            _state.value = DetailUiState.Ready(
-                swing = swing,
-                samples = samples,
-                metrics = metrics,
-                averageHeartRateBpm = null,
-            )
-            // HR loads asynchronously — UI shows samples/metrics immediately.
-            loadHeartRate(swing)
         }
     }
 
@@ -68,8 +92,9 @@ class DetailViewModel(
             val samples = healthConnect.heartRateBetween(start, end)
             if (samples.isEmpty()) return@launch
             val avg = samples.map { it.bpm }.average().toLong()
-            _state.value = (state.value as? DetailUiState.Ready)?.copy(averageHeartRateBpm = avg)
-                ?: state.value
+            _state.update { current ->
+                (current as? DetailUiState.Ready)?.copy(averageHeartRateBpm = avg) ?: current
+            }
         }
     }
 

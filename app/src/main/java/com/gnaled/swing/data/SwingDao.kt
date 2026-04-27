@@ -19,6 +19,9 @@ interface SwingDao {
     @Query("SELECT * FROM swings WHERE id = :id")
     suspend fun findById(id: String): Swing?
 
+    @Query("SELECT * FROM swings WHERE id = :id")
+    fun observeById(id: String): Flow<Swing?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSwing(swing: Swing)
 
@@ -31,6 +34,9 @@ interface SwingDao {
     @Query("SELECT * FROM samples WHERE swingId = :swingId ORDER BY frameIndex")
     suspend fun samplesFor(swingId: String): List<Sample>
 
+    @Query("SELECT * FROM samples WHERE swingId = :swingId ORDER BY frameIndex")
+    fun observeSamples(swingId: String): Flow<List<Sample>>
+
     @Query("DELETE FROM samples WHERE swingId = :swingId")
     suspend fun clearSamples(swingId: String)
 
@@ -39,6 +45,9 @@ interface SwingDao {
 
     @Query("SELECT * FROM metrics WHERE swingId = :swingId")
     suspend fun metricsFor(swingId: String): List<Metric>
+
+    @Query("SELECT * FROM metrics WHERE swingId = :swingId")
+    fun observeMetrics(swingId: String): Flow<List<Metric>>
 
     @Transaction
     suspend fun replaceAnalysis(swing: Swing, samples: List<Sample>, metrics: List<Metric>) {

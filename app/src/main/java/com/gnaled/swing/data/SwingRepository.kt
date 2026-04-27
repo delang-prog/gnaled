@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
 class SwingRepository(private val dao: SwingDao) {
     fun observeSwings(): Flow<List<Swing>> = dao.observeAll()
 
+    fun observeSwing(id: String): Flow<Swing?> = dao.observeById(id)
+
     suspend fun get(id: String): Swing? = dao.findById(id)
 
     suspend fun insert(swing: Swing) = dao.upsertSwing(swing)
@@ -16,7 +18,11 @@ class SwingRepository(private val dao: SwingDao) {
 
     suspend fun samples(swingId: String): List<Sample> = dao.samplesFor(swingId)
 
+    fun observeSamples(swingId: String): Flow<List<Sample>> = dao.observeSamples(swingId)
+
     suspend fun metrics(swingId: String): List<Metric> = dao.metricsFor(swingId)
+
+    fun observeMetrics(swingId: String): Flow<List<Metric>> = dao.observeMetrics(swingId)
 
     suspend fun replaceAnalysis(swing: Swing, samples: List<Sample>, metrics: List<Metric>) =
         dao.replaceAnalysis(swing, samples, metrics)
