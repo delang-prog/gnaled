@@ -5,6 +5,8 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.gnaled.swing.SwingApp
 import com.gnaled.swing.data.entity.AnalysisStatus
+import com.gnaled.swing.data.entity.Metric
+import com.gnaled.swing.data.entity.MetricKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -41,9 +43,32 @@ class PoseAnalysisWorker(
         outcome.fold(
             onSuccess = { result ->
                 val segmentation = SwingSegmenter.segment(result.samples)
-                val metrics = segmentation
+                val baseMetrics = segmentation
                     ?.let { MetricsCalculator.compute(swingId, result.samples, it) }
                     ?: emptyList()
+
+                // Audio time-of-flight serve speed. Best-effort: returns null
+                // if the clip lacks an audio track, no contact frame, or
+                // onset pairing fails.
+                val contactTs = segmentation
+                    ?.let { result.samples.getOrNull(it.contactFrameIndex)?.timestampMillis }
+                val onsets = runCatching { AudioPeakDetector.detect(File(swing.videoPath)) }
+                    .getOrDefault(emptyList())
+                val serve = ServeSpeedEstimator.estimate(
+                    contactTimestampMillis = contactTs,
+                    onsets = onsets,
+                )
+                val metrics = if (serve != null) {
+                    baseMetrics + Metric(
+                        swingId = swingId,
+                        kind = MetricKind.BallSpeedMph,
+                        value = serve.mph,
+                        unit = "mph",
+                    )
+                } else {
+                    baseMetrics
+                }
+
                 repo.replaceAnalysis(
                     swing = swing.copy(
                         analysisStatus = AnalysisStatus.Complete,
