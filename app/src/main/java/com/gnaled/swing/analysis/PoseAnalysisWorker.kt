@@ -40,10 +40,17 @@ class PoseAnalysisWorker(
 
         outcome.fold(
             onSuccess = { result ->
+                val segmentation = SwingSegmenter.segment(result.samples)
+                val metrics = segmentation
+                    ?.let { MetricsCalculator.compute(swingId, result.samples, it) }
+                    ?: emptyList()
                 repo.replaceAnalysis(
-                    swing = swing.copy(analysisStatus = AnalysisStatus.Complete),
+                    swing = swing.copy(
+                        analysisStatus = AnalysisStatus.Complete,
+                        contactFrameIndex = segmentation?.contactFrameIndex,
+                    ),
                     samples = result.samples,
-                    metrics = emptyList(),
+                    metrics = metrics,
                 )
                 Result.success()
             },

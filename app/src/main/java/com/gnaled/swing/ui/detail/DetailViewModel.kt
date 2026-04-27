@@ -10,6 +10,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.gnaled.swing.data.SwingRepository
 import com.gnaled.swing.data.entity.AnalysisStatus
+import com.gnaled.swing.data.entity.Metric
 import com.gnaled.swing.data.entity.Sample
 import com.gnaled.swing.data.entity.Swing
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,9 +47,10 @@ class DetailViewModel(
                 return@launch
             }
             val samples = repository.samples(swingId)
+            val metrics = repository.metrics(swingId)
             player.setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(java.io.File(swing.videoPath))))
             player.prepare()
-            _state.value = DetailUiState.Ready(swing = swing, samples = samples)
+            _state.value = DetailUiState.Ready(swing = swing, samples = samples, metrics = metrics)
         }
     }
 
@@ -87,7 +89,11 @@ class DetailViewModel(
 sealed interface DetailUiState {
     data object Loading : DetailUiState
     data object Missing : DetailUiState
-    data class Ready(val swing: Swing, val samples: List<Sample>) : DetailUiState {
+    data class Ready(
+        val swing: Swing,
+        val samples: List<Sample>,
+        val metrics: List<Metric>,
+    ) : DetailUiState {
         val analysisStatus: AnalysisStatus get() = swing.analysisStatus
     }
 }
