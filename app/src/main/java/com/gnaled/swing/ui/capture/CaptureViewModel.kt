@@ -34,7 +34,11 @@ sealed interface CaptureUiState {
 
 sealed interface AutoState {
     data object Off : AutoState
-    data class Active(val swingsDetected: Int, val sessionStartMonotonicMillis: Long) : AutoState
+    data class Active(
+        val swingsDetected: Int,
+        val sessionStartMonotonicMillis: Long,
+        val peakWristSpeed: Float = 0f,
+    ) : AutoState
     data class Processing(val processed: Int, val total: Int) : AutoState
     data class Done(val saved: Int) : AutoState
     data class Error(val message: String) : AutoState
@@ -118,12 +122,18 @@ class CaptureViewModel(
 
     fun onAutoFrame(frame: LandmarkFrame, monotonicMillis: Long) {
         val current = _autoState.value as? AutoState.Active ?: return
-        val triggered = trigger?.feed(frame, monotonicMillis) ?: return
-        detections += AutoClipFinalizer.Detection(
-            contactMillisFromStart = triggered - sessionStartMonotonicMillis,
-            sessionStartWallMillis = sessionStartWallMillis,
+        val t = trigger ?: return
+        val triggered = t.feed(frame, monotonicMillis)
+        if (triggered != null) {
+            detections += AutoClipFinalizer.Detection(
+                contactMillisFromStart = triggered - sessionStartMonotonicMillis,
+                sessionStartWallMillis = sessionStartWallMillis,
+            )
+        }
+        _autoState.value = current.copy(
+            swingsDetected = detections.size,
+            peakWristSpeed = t.peakSpeed,
         )
-        _autoState.value = current.copy(swingsDetected = detections.size)
     }
 
     fun onAutoSessionFinalized(durationMillis: Long, preMillis: Long = 1500L, postMillis: Long = 1500L) {

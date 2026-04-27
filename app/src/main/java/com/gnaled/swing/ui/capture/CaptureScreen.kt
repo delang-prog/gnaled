@@ -329,7 +329,8 @@ private fun StatusOverlay(
         }
         CaptureMode.Auto -> when (autoState) {
             AutoState.Off -> null
-            is AutoState.Active -> "● Auto · ${autoState.swingsDetected} swings"
+            is AutoState.Active -> "● Auto · ${autoState.swingsDetected} swings · peak %.1f"
+                .format(autoState.peakWristSpeed)
             is AutoState.Processing -> "Processing ${autoState.processed}/${autoState.total}…"
             is AutoState.Done -> "Saved ${autoState.saved} swings"
             is AutoState.Error -> autoState.message

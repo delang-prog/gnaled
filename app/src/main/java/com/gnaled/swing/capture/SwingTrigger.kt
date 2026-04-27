@@ -15,7 +15,7 @@ import kotlin.math.hypot
  * and shutter speed, so this should be tunable from settings later.
  */
 class SwingTrigger(
-    private val minPeakUnitsPerSec: Float = 2.5f,
+    private val minPeakUnitsPerSec: Float = 1.2f,
     private val refractoryMillis: Long = 1500L,
     private val visibilityThreshold: Float = 0.5f,
 ) {
@@ -25,6 +25,11 @@ class SwingTrigger(
     private var lastTimestampMillis = 0L
     private var lastTriggerMillis = Long.MIN_VALUE
     private var primed = false
+
+    var lastSpeed: Float = 0f
+        private set
+    var peakSpeed: Float = 0f
+        private set
 
     /** Returns the trigger timestamp if a swing fired, otherwise null. */
     fun feed(frame: LandmarkFrame, monotonicMillis: Long): Long? {
@@ -39,6 +44,8 @@ class SwingTrigger(
         val dy = wrist.y - lastY
         val speed = hypot(dx, dy) / dt
         lastX = wrist.x; lastY = wrist.y; lastTimestampMillis = monotonicMillis
+        lastSpeed = speed
+        if (speed > peakSpeed) peakSpeed = speed
 
         if (speed >= minPeakUnitsPerSec &&
             monotonicMillis - lastTriggerMillis >= refractoryMillis
@@ -52,6 +59,8 @@ class SwingTrigger(
     fun reset() {
         primed = false
         lastTriggerMillis = Long.MIN_VALUE
+        lastSpeed = 0f
+        peakSpeed = 0f
     }
 
     private fun dominantWrist(frame: LandmarkFrame): WristPoint? {
