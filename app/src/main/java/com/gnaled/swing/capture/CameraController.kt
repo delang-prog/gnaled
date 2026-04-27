@@ -2,9 +2,13 @@ package com.gnaled.swing.capture
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.FileOutputOptions
@@ -62,8 +66,24 @@ class CameraController(
             val executor = analysisExecutor ?: Executors.newSingleThreadExecutor().also {
                 analysisExecutor = it
             }
+            // Pin a low analysis resolution + 16:9 aspect to match the
+            // recorder's stream config. Samsung's camera HAL otherwise
+            // sometimes picks an analysis size that conflicts with the
+            // VideoCapture stream and the recording fails with
+            // ERROR_SOURCE_INACTIVE on start.
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
+                        .setResolutionStrategy(
+                            ResolutionStrategy(
+                                Size(640, 360),
+                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER,
+                            ),
+                        )
+                        .build(),
+                )
                 .build()
                 .apply { setAnalyzer(executor, analyzer) }
             useCases += analysis

@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -103,6 +104,16 @@ fun CaptureScreen() {
             controller.unbind()
             liveAnalyzer.close()
         }
+    }
+
+    // Keep the screen on while the Capture screen is mounted. Without this
+    // the OS turns the display off during long Auto sessions or while the
+    // phone is propped on a tripod, which reclaims the camera and ends the
+    // recording with ERROR_SOURCE_INACTIVE.
+    val rootView = LocalView.current
+    DisposableEffect(rootView) {
+        rootView.keepScreenOn = true
+        onDispose { rootView.keepScreenOn = false }
     }
 
     LaunchedEffect(autoState) {
