@@ -47,7 +47,11 @@ class CameraController(
 
     private val mainExecutor: Executor = ContextCompat.getMainExecutor(context)
 
-    suspend fun bind(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
+    suspend fun bind(
+        lifecycleOwner: LifecycleOwner,
+        previewView: PreviewView,
+        selector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA,
+    ) {
         val cameraProvider = awaitProvider()
         val preview = Preview.Builder().build().apply {
             surfaceProvider = previewView.surfaceProvider
@@ -92,7 +96,7 @@ class CameraController(
         cameraProvider.unbindAll()
         cameraProvider.bindToLifecycle(
             lifecycleOwner,
-            CameraSelector.DEFAULT_BACK_CAMERA,
+            selector,
             *useCases.toTypedArray(),
         )
     }

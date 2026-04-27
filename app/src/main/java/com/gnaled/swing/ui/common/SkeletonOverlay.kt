@@ -26,6 +26,7 @@ fun SkeletonOverlay(
     contentHeightPx: Int,
     modifier: Modifier = Modifier,
     visibilityThreshold: Float = 0.5f,
+    mirrored: Boolean = false,
 ) {
     Canvas(modifier = modifier) {
         if (landmarks == null || contentWidthPx <= 0 || contentHeightPx <= 0) return@Canvas
@@ -46,7 +47,8 @@ fun SkeletonOverlay(
         fun pointAt(idx: Int): Offset? {
             val base = idx * PoseConnections.FLOATS_PER_LANDMARK
             if (landmarks[base + 3] < visibilityThreshold) return null
-            val x = drawArea.left + landmarks[base] * drawArea.width
+            val rawX = if (mirrored) (1f - landmarks[base]) else landmarks[base]
+            val x = drawArea.left + rawX * drawArea.width
             val y = drawArea.top + landmarks[base + 1] * drawArea.height
             return Offset(x, y)
         }

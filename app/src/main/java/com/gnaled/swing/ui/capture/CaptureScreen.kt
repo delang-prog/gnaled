@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
 import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
@@ -19,9 +20,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.FiberManualRecord
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -95,8 +98,18 @@ fun CaptureScreen() {
     val controller = remember(liveAnalyzer) { CameraController(context, liveAnalyzer) }
     val liveFrame by liveAnalyzer.frame.collectAsStateWithLifecycle()
 
-    LaunchedEffect(controller, lifecycleOwner, previewView) {
-        runCatching { controller.bind(lifecycleOwner, previewView) }
+    var useFrontCamera by remember { mutableStateOf(false) }
+    val selector = if (useFrontCamera) {
+        CameraSelector.DEFAULT_FRONT_CAMERA
+    } else {
+        CameraSelector.DEFAULT_BACK_CAMERA
+    }
+    val recordingActive = state is CaptureUiState.Recording ||
+        autoState is AutoState.Active ||
+        autoState is AutoState.Processing
+
+    LaunchedEffect(controller, lifecycleOwner, previewView, selector) {
+        runCatching { controller.bind(lifecycleOwner, previewView, selector) }
             .onFailure { viewModel.onRecordingFailed(it.message ?: "Camera bind failed") }
     }
     DisposableEffect(controller) {
@@ -136,8 +149,22 @@ fun CaptureScreen() {
             landmarks = liveFrame?.landmarks,
             contentWidthPx = liveFrame?.widthPx ?: 0,
             contentHeightPx = liveFrame?.heightPx ?: 0,
+            mirrored = useFrontCamera,
             modifier = Modifier.fillMaxSize(),
         )
+
+        FilledTonalIconButton(
+            onClick = { if (!recordingActive) useFrontCamera = !useFrontCamera },
+            enabled = !recordingActive,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Cameraswitch,
+                contentDescription = if (useFrontCamera) "Switch to back camera" else "Switch to selfie camera",
+            )
+        }
 
         Column(
             modifier = Modifier
