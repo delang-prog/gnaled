@@ -1,5 +1,6 @@
 package com.gnaled.swing.data
 
+import com.gnaled.swing.data.entity.BallSample
 import com.gnaled.swing.data.entity.Metric
 import com.gnaled.swing.data.entity.Sample
 import com.gnaled.swing.data.entity.Swing
@@ -24,6 +25,14 @@ class SwingRepository(private val dao: SwingDao) {
 
     fun observeMetrics(swingId: String): Flow<List<Metric>> = dao.observeMetrics(swingId)
 
-    suspend fun replaceAnalysis(swing: Swing, samples: List<Sample>, metrics: List<Metric>) =
-        dao.replaceAnalysis(swing, samples, metrics)
+    suspend fun ballSamples(swingId: String): List<BallSample> = dao.ballSamplesFor(swingId)
+
+    fun observeBallSamples(swingId: String): Flow<List<BallSample>> = dao.observeBallSamples(swingId)
+
+    suspend fun replaceAnalysis(
+        swing: Swing,
+        samples: List<Sample>,
+        metrics: List<Metric>,
+        ballSamples: List<BallSample> = emptyList(),
+    ) = dao.replaceAnalysis(swing, samples, metrics, ballSamples)
 }
