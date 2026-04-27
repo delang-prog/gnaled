@@ -3,6 +3,7 @@ package com.gnaled.swing.ui.capture
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.gnaled.swing.analysis.PoseAnalysisScheduler
 import com.gnaled.swing.capture.VideoMetadata
 import com.gnaled.swing.data.SwingRepository
 import com.gnaled.swing.data.entity.CaptureSource
@@ -25,7 +26,10 @@ sealed interface CaptureUiState {
     data class Error(val message: String) : CaptureUiState
 }
 
-class CaptureViewModel(private val repository: SwingRepository) : ViewModel() {
+class CaptureViewModel(
+    private val repository: SwingRepository,
+    private val analysisScheduler: PoseAnalysisScheduler,
+) : ViewModel() {
 
     private val _state = MutableStateFlow<CaptureUiState>(CaptureUiState.Idle)
     val state: StateFlow<CaptureUiState> = _state.asStateFlow()
@@ -53,6 +57,7 @@ class CaptureViewModel(private val repository: SwingRepository) : ViewModel() {
                 videoPath = file.absolutePath,
             )
             repository.insert(swing)
+            analysisScheduler.enqueue(clipId)
             _state.value = CaptureUiState.Saved(clipId)
         }
     }
@@ -66,9 +71,12 @@ class CaptureViewModel(private val repository: SwingRepository) : ViewModel() {
         return "Swing $time"
     }
 
-    class Factory(private val repository: SwingRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val repository: SwingRepository,
+        private val analysisScheduler: PoseAnalysisScheduler,
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            CaptureViewModel(repository) as T
+            CaptureViewModel(repository, analysisScheduler) as T
     }
 }

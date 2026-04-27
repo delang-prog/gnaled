@@ -52,7 +52,10 @@ fun CaptureScreen() {
     val lifecycleOwner = LocalLifecycleOwner.current
     val container = appContainer()
     val viewModel: CaptureViewModel = viewModel(
-        factory = CaptureViewModel.Factory(container.swingRepository),
+        factory = CaptureViewModel.Factory(
+            repository = container.swingRepository,
+            analysisScheduler = container.poseAnalysisScheduler,
+        ),
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
 
