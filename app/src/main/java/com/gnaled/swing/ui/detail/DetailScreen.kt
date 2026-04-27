@@ -46,6 +46,7 @@ fun DetailScreen(swingId: String, onBack: () -> Unit) {
         factory = DetailViewModel.Factory(
             appContext = context.applicationContext,
             repository = container.swingRepository,
+            healthConnect = container.healthConnect,
             swingId = swingId,
         ),
     )
@@ -120,6 +121,7 @@ private fun DetailFooter(state: DetailUiState.Ready, modifier: Modifier = Modifi
                 contactFrameIndex = state.swing.contactFrameIndex,
                 contactTimestampMillis = state.swing.contactFrameIndex
                     ?.let { idx -> state.samples.getOrNull(idx)?.timestampMillis },
+                averageHeartRateBpm = state.averageHeartRateBpm,
             )
         }
     }
@@ -130,6 +132,7 @@ private fun MetricsCard(
     metrics: List<Metric>,
     contactFrameIndex: Int?,
     contactTimestampMillis: Long?,
+    averageHeartRateBpm: Long?,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -147,6 +150,9 @@ private fun MetricsCard(
                     label = labelFor(metric.kind),
                     value = formatMetric(metric),
                 )
+            }
+            if (averageHeartRateBpm != null) {
+                MetricRow(label = "Heart rate (avg)", value = "$averageHeartRateBpm bpm")
             }
         }
     }

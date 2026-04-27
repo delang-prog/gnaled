@@ -4,11 +4,13 @@ import android.content.Context
 import com.gnaled.swing.analysis.PoseAnalysisScheduler
 import com.gnaled.swing.capture.AutoClipExtractor
 import com.gnaled.swing.capture.AutoClipFinalizer
+import com.gnaled.swing.health.HealthConnectRepository
 
 interface AppContainer {
     val swingRepository: SwingRepository
     val poseAnalysisScheduler: PoseAnalysisScheduler
     val autoClipFinalizer: AutoClipFinalizer
+    val healthConnect: HealthConnectRepository
 }
 
 class DefaultAppContainer(context: Context) : AppContainer {
@@ -22,4 +24,5 @@ class DefaultAppContainer(context: Context) : AppContainer {
         repository = swingRepository,
         scheduler = poseAnalysisScheduler,
     )
+    override val healthConnect: HealthConnectRepository = HealthConnectRepository(appContext)
 }
