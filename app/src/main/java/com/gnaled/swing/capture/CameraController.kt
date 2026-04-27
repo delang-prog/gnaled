@@ -3,6 +3,7 @@ package com.gnaled.swing.capture
 import android.annotation.SuppressLint
 import android.content.Context
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.FallbackStrategy
@@ -18,18 +19,27 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import java.io.File
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 /**
  * Wraps CameraX setup so the UI layer never touches the provider directly.
  * One instance per Capture screen; rebind on lifecycle changes.
+ *
+ * If [liveAnalyzer] is non-null, an ImageAnalysis use case runs alongside
+ * Preview + VideoCapture and feeds frames into the analyzer in
+ * STRATEGY_KEEP_ONLY_LATEST mode.
  */
-class CameraController(private val context: Context) {
+class CameraController(
+    private val context: Context,
+    private val liveAnalyzer: LivePoseAnalyzer? = null,
+) {
 
     private var provider: ProcessCameraProvider? = null
     private var videoCapture: VideoCapture<Recorder>? = null
     private var recording: Recording? = null
+    private var analysisExecutor: java.util.concurrent.ExecutorService? = null
 
     private val mainExecutor: Executor = ContextCompat.getMainExecutor(context)
 
@@ -46,12 +56,24 @@ class CameraController(private val context: Context) {
         val capture = VideoCapture.withOutput(recorder)
         videoCapture = capture
 
+        val useCases = mutableListOf(preview, capture)
+
+        liveAnalyzer?.let { analyzer ->
+            val executor = analysisExecutor ?: Executors.newSingleThreadExecutor().also {
+                analysisExecutor = it
+            }
+            val analysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+                .apply { setAnalyzer(executor, analyzer) }
+            useCases += analysis
+        }
+
         cameraProvider.unbindAll()
         cameraProvider.bindToLifecycle(
             lifecycleOwner,
             CameraSelector.DEFAULT_BACK_CAMERA,
-            preview,
-            capture,
+            *useCases.toTypedArray(),
         )
     }
 
@@ -59,6 +81,8 @@ class CameraController(private val context: Context) {
         recording?.stop()
         recording = null
         provider?.unbindAll()
+        analysisExecutor?.shutdown()
+        analysisExecutor = null
     }
 
     @SuppressLint("MissingPermission")

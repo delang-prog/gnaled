@@ -43,8 +43,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gnaled.swing.capture.CameraController
 import com.gnaled.swing.capture.ClipHandle
 import com.gnaled.swing.capture.ClipStorage
+import com.gnaled.swing.capture.LivePoseAnalyzer
 import com.gnaled.swing.capture.VideoMetadataReader
 import com.gnaled.swing.ui.appContainer
+import com.gnaled.swing.ui.common.SkeletonOverlay
 
 @Composable
 fun CaptureScreen() {
@@ -78,23 +80,35 @@ fun CaptureScreen() {
 
     val previewView = remember {
         PreviewView(context).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
+            scaleType = PreviewView.ScaleType.FIT_CENTER
         }
     }
-    val controller = remember { CameraController(context) }
+    val liveAnalyzer = remember { LivePoseAnalyzer(context) }
+    val controller = remember(liveAnalyzer) { CameraController(context, liveAnalyzer) }
+    val liveFrame by liveAnalyzer.frame.collectAsStateWithLifecycle()
 
     LaunchedEffect(controller, lifecycleOwner, previewView) {
         runCatching { controller.bind(lifecycleOwner, previewView) }
             .onFailure { viewModel.onRecordingFailed(it.message ?: "Camera bind failed") }
     }
     DisposableEffect(controller) {
-        onDispose { controller.unbind() }
+        onDispose {
+            controller.unbind()
+            liveAnalyzer.close()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { previewView },
+        )
+
+        SkeletonOverlay(
+            landmarks = liveFrame?.landmarks,
+            contentWidthPx = liveFrame?.widthPx ?: 0,
+            contentHeightPx = liveFrame?.heightPx ?: 0,
+            modifier = Modifier.fillMaxSize(),
         )
 
         StatusOverlay(state = state, modifier = Modifier.align(Alignment.TopCenter).padding(16.dp))

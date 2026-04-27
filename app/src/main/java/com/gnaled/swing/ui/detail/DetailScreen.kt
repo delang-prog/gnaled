@@ -34,6 +34,7 @@ import com.gnaled.swing.data.entity.Metric
 import com.gnaled.swing.data.entity.MetricKind
 import com.gnaled.swing.ui.PlaceholderScreen
 import com.gnaled.swing.ui.appContainer
+import com.gnaled.swing.ui.common.SkeletonOverlay
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -89,9 +90,9 @@ private fun ReadyDetail(state: DetailUiState.Ready, viewModel: DetailViewModel) 
                 },
             )
             SkeletonOverlay(
-                sample = viewModel.sampleAt(positionMillis),
-                videoWidthPx = state.swing.widthPx,
-                videoHeightPx = state.swing.heightPx,
+                landmarks = viewModel.sampleAt(positionMillis)?.landmarks,
+                contentWidthPx = state.swing.widthPx,
+                contentHeightPx = state.swing.heightPx,
                 modifier = Modifier.fillMaxSize(),
             )
         }
